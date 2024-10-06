@@ -5,8 +5,21 @@ on:
 
 jobs:
 
+  prepare-sources:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          wget https://pypi.io/packages/source/m/mercurial/mercurial-6.8.1.tar.gz
+          tar -xf mercurial-6.8.1.tar.gz
+          mv mercurial-6.8.1 sources
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sources
+          path: sources
 
   wheels:
+    needs: prepare-sources
     runs-on: ${{ matrix.os }}-latest
     strategy:
       fail-fast: false
@@ -22,18 +35,12 @@ jobs:
           - os: macos
             architecture: arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: sources
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
-      - name: download-sdist
-        run: |
-          wget https://pypi.io/packages/source/m/mercurial/mercurial-6.8.1.tar.gz
-          tar -xf mercurial-6.8.1.tar.gz
-          mv mercurial-6.8.1/{.[!.],}* .
-          ls -la
-          ls -la mercurial-6.8.1
-          rmdir mercurial-6.8.1
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.19.2
         env:
@@ -44,53 +51,59 @@ jobs:
           name: wheel-${{ matrix.os }}-${{ matrix.architecture }}
           path: wheelhouse/*.whl
 
-  # wheels-windows:
-  #   runs-on: ${{ matrix.os }}-latest
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       include:
-  #         - os: windows
-  #           architecture: AMD64
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-python@v5
-  #       with:
-  #         python-version: 3.x
-  #     - name: Build wheels
-  #       uses: pypa/cibuildwheel@v2.19.2
-  #       env:
-  #         CIBW_SKIP: pp* cp36-* cp37-* cp38-* *-musllinux*
-  #         CIBW_ARCHS: ${{ matrix.architecture }}
-  #     - uses: actions/upload-artifact@v4
-  #       with:
-  #         name: wheel-${{ matrix.os }}-${{ matrix.architecture }}
-  #         path: wheelhouse/*.whl
+  wheels-windows:
+    needs: prepare-sources
+    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows
+            architecture: AMD64
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sources
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.19.2
+        env:
+          CIBW_SKIP: pp* cp36-* cp37-* cp38-* *-musllinux*
+          CIBW_ARCHS: ${{ matrix.architecture }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.os }}-${{ matrix.architecture }}
+          path: wheelhouse/*.whl
 
-  # wheel-ubuntu-aarch64:
-  #   if: |
-  #     github.event_name == 'push' &&
-  #     startsWith(github.ref, 'refs/tags/')
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: docker/setup-qemu-action@v2
-  #       with:
-  #         platforms: arm64
+  wheel-ubuntu-aarch64:
+    needs: prepare-sources
+    # if: |
+    #   github.event_name == 'push' &&
+    #   startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sources
+      - uses: docker/setup-qemu-action@v2
+        with:
+          platforms: arm64
 
-  #     - uses: actions/setup-python@v5
-  #       with:
-  #         python-version: 3.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
 
-  #     - name: Build wheels
-  #       uses: pypa/cibuildwheel@v2.19.2
-  #       env:
-  #         CIBW_SKIP: pp* cp36-* cp37-* cp38-* *-musllinux*
-  #         CIBW_ARCHS: aarch64
-  #     - uses: actions/upload-artifact@v4
-  #       with:
-  #         name: wheel-ubuntu-aarch64
-  #         path: wheelhouse/*.whl
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.19.2
+        env:
+          CIBW_SKIP: pp* cp36-* cp37-* cp38-* *-musllinux*
+          CIBW_ARCHS: aarch64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-ubuntu-aarch64
+          path: wheelhouse/*.whl
 
   # pypi-publish:
   #   name: Upload release to PyPI
